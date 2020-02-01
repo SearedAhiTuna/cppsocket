@@ -12,14 +12,34 @@
     static unsigned long wsa_count = 0;
 #else
     #include <errno.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
 
     #define BAD_SOCKET -1
 #endif
 
 static void throw_error(const int& err)
 {
+#ifdef _WIN32
+    // Get the error message
+    LPSTR msg_buf = nullptr;
+    DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                  FORMAT_MESSAGE_FROM_SYSTEM |
+                  FORMAT_MESSAGE_IGNORE_INSERTS;
+    DWORD lang_id = MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
+    size_t size = FormatMessageA(flags, NULL, err, lang_id, (LPSTR)&msg_buf, 0, NULL);
+
+    // Copy to string
+    std::string message(msg_buf, size);
+
+    // Free the old buffer
+    LocalFree(msg_buf);
+
+    throw std::system_error(err, std::system_category(), message);
+#else
     std::error_condition econd = std::system_category().default_error_condition(err);
-    std::system_error(econd.value(), econd.category(), econd.message());
+    throw std::system_error(econd.value(), econd.category(), econd.message());
+#endif
 }
 static void throw_error()
 {
@@ -61,22 +81,16 @@ const sockaddr& std::sock_addr::native() const
 }
 
 std::sock_addr_inet::sock_addr_inet():
-    sock_addr(sizeof(sockaddr_in))
+    sock_addr(sizeof(inet_native))
 {
-
 }
 
 std::sock_addr_inet::sock_addr_inet(const std::string& addr, const inet_port& port):
-    sock_addr(sizeof(sockaddr_in))
+    sock_addr(sizeof(inet_native))
 {
     native_inet().sin_family = AF_INET;
     native_inet().sin_port = port;
-
-#ifdef _WIN32
     inet_pton(AF_INET, addr.c_str(), &native_inet().sin_addr);
-#else
-    // Todo
-#endif
 }
 
 std::sock_addr_inet::inet_port std::sock_addr_inet::port() const
@@ -94,14 +108,14 @@ std::string std::sock_addr_inet::addr_str() const
     return std::string(inet_ntoa(addr()));
 }
 
-sockaddr_in& std::sock_addr_inet::native_inet()
+std::sock_addr_inet::inet_native& std::sock_addr_inet::native_inet()
 {
-    return reinterpret_cast<sockaddr_in&>(_native);
+    return reinterpret_cast<inet_native&>(_native);
 }
 
-const sockaddr_in& std::sock_addr_inet::native_inet() const
+const std::sock_addr_inet::inet_native& std::sock_addr_inet::native_inet() const
 {
-    return reinterpret_cast<const sockaddr_in&>(_native);
+    return reinterpret_cast<const inet_native&>(_native);
 }
 
 std::socket::socket():
@@ -194,7 +208,7 @@ void std::socket::close()
 #ifdef _WIN32
     err = closesocket(_sock);
 #else
-    err = close(_sock);
+    err = ::close(_sock);
 #endif
 
     if (err == BAD_SOCKET)
@@ -355,87 +369,4 @@ void std::socket::setsockopt(const sock_level& level, const sock_option& option_
     {
         throw_error();
     }
-}
-
-#include <iostream>
-
-int main(int argc, char** argv)
-{
-    if (std::string(argv[1]) == "client")
-    {
-        std::sock_addr_inet my_addr("127.0.0.1", 4400);
-        std::cout << "Address = " << my_addr.addr_str() << ":" << my_addr.port() << "\n";
-        std::cout.flush();
-
-        std::socket sock(AF_INET, SOCK_STREAM);
-
-        std::sock_addr_inet serv_addr("127.0.0.1", 4300);
-
-        try
-        {
-            sock.connect(serv_addr);
-            std::cout << "Connected to " << serv_addr.addr_str() << ":" << serv_addr.port() << "\n";
-
-            std::string msg;
-            do
-            {
-                std::cin >> msg;
-                sock.send(msg.c_str(), msg.size());
-            }
-            while (msg != "done");
-        }
-        catch (std::exception& e)
-        {
-            std::cout << "Connection failed:" << e.what();
-        }
-    }
-    else if (std::string(argv[1]) == "server")
-    {
-        std::sock_addr_inet my_addr("127.0.0.1", 4300);
-        std::cout << "Address = " << my_addr.addr_str() << ":" << my_addr.port() << "\n";
-        std::cout.flush();
-
-        std::socket sock(AF_INET, SOCK_STREAM);
-
-        try
-        {
-            sock.bind(my_addr);
-            sock.listen();
-        }
-        catch (std::exception& e)
-        {
-            std::cout << "Bind and listen failed: " << e.what();
-        }
-
-        std::socket client_sock;
-        std::sock_addr_inet client_addr;
-
-        try
-        {
-            sock.accept(client_sock, client_addr);
-            std::cout << "Connection from " << client_addr.addr_str() << ":" << client_addr.port() << "\n";
-            std::cout.flush();
-
-            char recv_buf[100];
-            int recv_size;
-
-            do
-            {
-                recv_size = client_sock.recv(recv_buf);
-
-                if (recv_size > 0)
-                {
-                    std::cout << "Received: " << recv_buf << "\n";
-                    std::cout.flush();
-                }
-            }
-            while (recv_size > 0);
-        }
-        catch (std::exception e)
-        {
-            std::cout << "Accept failed: " << e.what();
-        }
-    }
-    
-    return 0;
 }

@@ -15,6 +15,7 @@
     #pragma comment(lib, "Ws2_32.lib")
 #else
     #include <sys/socket.h>
+    #include <netinet/in.h>
 #endif
 
 #include <cstddef>
@@ -69,7 +70,11 @@ namespace std
 #ifdef _WIN32
         typedef USHORT inet_port;
         typedef IN_ADDR inet_addr;
+        typedef sockaddr_in inet_native;
 #else
+        typedef unsigned short inet_port;
+        typedef struct in_addr inet_addr;
+        typedef struct sockaddr_in inet_native;
 #endif
 
     public:
@@ -81,8 +86,8 @@ namespace std
         std::string addr_str() const;
 
     private:
-        sockaddr_in& native_inet();
-        const sockaddr_in& native_inet() const;
+        inet_native& native_inet();
+        const inet_native& native_inet() const;
     };
 
     class socket final
@@ -155,16 +160,17 @@ namespace std
                         void* option_value, sock_len& option_len) const;
 
         ssize_t recv(void* buffer, const size_t& length, const sock_option& flags = 0);
+        template <typename T>
         ssize_t recv(T& buffer, const sock_option& flags = 0)
         {
-            return recv(void*)&buffer, sizeof(T), flags);
+            return recv((void*)&buffer, sizeof(T), flags);
         }
 
         ssize_t recvfrom(void* buffer, const size_t& length, const sock_option& flags, sock_addr& address);
         template <typename T>
         ssize_t recvfrom(T& buffer, const sock_option& flags, sock_addr& address)
         {
-            return recvfrom(void*)&buffer, sizeof(T), flags, address);
+            return recvfrom((void*)&buffer, sizeof(T), flags, address);
         }
 
         ssize_t send(const void* buffer, const size_t& length, const sock_option& flags = 0);
