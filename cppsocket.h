@@ -90,15 +90,14 @@ namespace std
         const inet_native& native_inet() const;
     };
 
-    class socket final
-    {
-    private:
 #ifdef _WIN32
-        typedef SOCKET desc_type;
+    typedef SOCKET native_socket_desc;
 #else
-        typedef int desc_type;
+    typedef int native_socket_desc;
 #endif
 
+    class socket final
+    {
     public:
         explicit socket();
         explicit socket(addr_family domain, sock_type type);
@@ -110,6 +109,7 @@ namespace std
         socket& operator=(const socket&) = delete;
         socket& operator=(socket&& x);
 
+        operator native_socket_desc() const;
         operator bool() const;
 
         void accept(socket& sock);
@@ -191,6 +191,6 @@ namespace std
                         const void* option_value, const sock_len& option_len);
 #endif
     private:
-        desc_type _sock;
+        native_socket_desc _sock;
     };
 };

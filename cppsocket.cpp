@@ -175,6 +175,11 @@ std::socket& std::socket::operator=(socket&& x)
     return *this;
 }
 
+std::socket::operator native_socket_desc() const
+{
+    return _sock;
+}
+
 std::socket::operator bool() const
 {
     return _sock != BAD_SOCKET;
