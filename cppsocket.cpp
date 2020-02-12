@@ -88,9 +88,15 @@ std::sock_addr_inet::sock_addr_inet():
 std::sock_addr_inet::sock_addr_inet(const std::string& addr, const inet_port& port):
     sock_addr(sizeof(inet_native))
 {
+    std::string actualAddr;
+    if (addr == "localhost")
+        actualAddr = "127.0.0.1";
+    else
+        actualAddr = addr;
+
     native_inet().sin_family = AF_INET;
     native_inet().sin_port = port;
-    inet_pton(AF_INET, addr.c_str(), &native_inet().sin_addr);
+    inet_pton(AF_INET, actualAddr.c_str(), &native_inet().sin_addr);
 }
 
 std::sock_addr_inet::inet_port std::sock_addr_inet::port() const
@@ -105,7 +111,12 @@ std::sock_addr_inet::inet_addr std::sock_addr_inet::addr() const
 
 std::string std::sock_addr_inet::addr_str() const
 {
+#ifdef _WIN32
+    char buf[16];
+    return std::string(inet_ntop(AF_INET, &addr(), buf, 16));
+#else
     return std::string(inet_ntoa(addr()));
+#endif
 }
 
 std::sock_addr_inet::inet_native& std::sock_addr_inet::native_inet()
@@ -170,12 +181,17 @@ std::socket::~socket()
 
 std::socket& std::socket::operator=(socket&& x)
 {
+    if (*this)
+    {
+        close();
+    }
+
     _sock = x._sock;
     x._sock = BAD_SOCKET;
     return *this;
 }
 
-std::socket::operator native_socket_desc() const
+std::socket::operator std::native_socket_desc() const
 {
     return _sock;
 }
@@ -192,6 +208,11 @@ void std::socket::accept(socket& sock)
 }
 void std::socket::accept(socket& sock, sock_addr& address)
 {
+    if (sock)  // Close the input socket if it is open
+    {
+        sock.close();
+    }
+
     sock._sock = ::accept(_sock, &address.native(), &address._length);
     if (sock._sock == BAD_SOCKET)
     {
@@ -209,6 +230,9 @@ void std::socket::bind(const sock_addr& address)
 
 void std::socket::close()
 {
+    if (!(*this))
+        return;
+
     int err;
 #ifdef _WIN32
     err = closesocket(_sock);
